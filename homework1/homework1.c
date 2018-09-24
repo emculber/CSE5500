@@ -49,7 +49,7 @@ void write_out(function_address* groups, int size) {
 function_address* function_address_grouping(mapped_single_region* mapped_single_region_data, int* size) {
   function_address* function_address_data = malloc(*size * sizeof(*function_address_data));
 
-  int index = -1;
+  int index = 0;
   int i = 0;
   char current_function_name[100];
   char current_reference_address[11];
@@ -64,11 +64,16 @@ function_address* function_address_grouping(mapped_single_region* mapped_single_
     if(strcmp(current_function_name, check_function_name) == 0 && strcmp(current_reference_address, check_reference_address) == 0) {
       function_address_data[index].count += 1;
     } else {
-      index++;
+      if(index != 0) {
+        index++;
+      }
       strcpy(function_address_data[index].type, mapped_single_region_data[i].type);
       strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
       strcpy(function_address_data[index].function_name, mapped_single_region_data[i].function_name);
       function_address_data[index].count = 1;
+      if(index == 0) {
+        index++;
+      }
     }
   }
 
