@@ -55,6 +55,12 @@ function_address* function_address_grouping(mapped_single_region* mapped_single_
   char current_reference_address[11];
   char check_function_name[100];
   char check_reference_address[11];
+
+  strcpy(function_address_data[index].type, mapped_single_region_data[i].type);
+  strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
+  strcpy(function_address_data[index].function_name, mapped_single_region_data[i].function_name);
+  function_address_data[index].count = 1;
+
   for(i = 0; i < *size; i++) {
       strcpy(current_function_name, mapped_single_region_data[i].function_name);
       strcpy(current_reference_address, mapped_single_region_data[i].reference_address);
@@ -64,16 +70,11 @@ function_address* function_address_grouping(mapped_single_region* mapped_single_
     if(strcmp(current_function_name, check_function_name) == 0 && strcmp(current_reference_address, check_reference_address) == 0) {
       function_address_data[index].count += 1;
     } else {
-      if(index != 0) {
-        index++;
-      }
+      index++;
       strcpy(function_address_data[index].type, mapped_single_region_data[i].type);
       strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
       strcpy(function_address_data[index].function_name, mapped_single_region_data[i].function_name);
       function_address_data[index].count = 1;
-      if(index == 0) {
-        index++;
-      }
     }
   }
 
