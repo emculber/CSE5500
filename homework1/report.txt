@@ -1,0 +1,69 @@
+SEQUENTIAL
+For the sequential program I broke it down into 9 blocks. Each block processes the data and molds it so that the next block can further process the data. The 9 blocks are as follows with there times to execute.
+
+    1. Read Files ( ~0.000100 Seconds)
+    2. Line Count File ( ~0.858335 Seconds)
+    3. File Processing ( ~6.601850 Seconds)
+    4. Single Out Data Combination ( ~0.460798 Seconds)
+    5. Sort Region And Single ( ~6.897570 Seconds)
+    6. Map Single To Region ( ~1.799418 Seconds)
+    7. Sort Single Region Map ( ~44.791313 Seconds)
+    8. Count Addresses and Functions ( ~1.221893 Seconds)
+    9. Write Out To File ( ~0.000233 Seconds)
+
+Some of these blocks are self explanatory but lets go though then anyway. 
+
+READ FILE BLOCK
+The first block is the Read File Block this block just reads the file pointers of the three files into the program.
+    • region.out
+    • read_single.out
+    • write_single.out
+This block is very quick only needing roughly 0.0001 Seconds to run. 
+
+LINE COUNT FILE BLOCK
+The second block is the Line Count File Block this block counts the total number of lines in the file. 
+    • region.out 3430161 lines
+    • read_single.out 28557495 lines
+    • write_single.out 6219835 lines
+This block only needs about  0.858335 Seconds to run.
+
+FILE PROCESSING BLOCK
+The third block is the File Processing Block this block converts the lines from the files and inserts them into a struct. It also removes the invalid lines and updates the file line counts. There are two structs used to process the files one struct is the region struct this is for the region.out file and the other is the single struct this is for the read_single.out and the write_single.out file.
+    • struct region
+        ◦ id
+        ◦ function_name
+    • struct single
+        ◦ type (write or read)
+        ◦ reference_address
+        ◦ associated_function_call_instance_id
+    • region_out_data (Old Size 3430161 :: New Size 3368907)
+    • read_out_data (Old Size 28557495 :: New Size 28496242)
+    • write_out_data (Old Size 6219835 :: New Size 6158582)
+This block takes a little bit longer needing about 6.601850 Seconds to run.
+
+SINGLE OUT DATA COMBINATION BLOCK
+The fourth block is the Single Out Data Combination Block this block just puts the write and read single structs together in one big single_data struct.
+    • single_data (34654824 size (28496242 read size + 6158582 write size))
+This block takes about 0.460798 Seconds to run.
+
+SORT REGION AND SINGLE BLOCK
+The fifth block is the Sort Region And Single Block this block sorts the region_out_data and single_data stucts based on the id of the region stuct and function_call_instance_id of the single stuct.
+Using the built in qsort these sorts are well optimized and took 6.897570 Seconds to run.
+
+MAP SINGLE TO REGION BLOCK
+The sixth block is the Map Single To Region Block and this is where the interesting work happens. This block is used to map the region_out_data column id to single_data column associated_function_call_instance_id. Because we sorted these two arrays first we were able to reduce the time of execution from O(N^2) using two arrays to O(N) by only using one array. We were able to do this because if at any time one column was greater or less then the other but not equal we would move down the array that is less then the other. If they were equal then we could map then two columns and then move down the single_data index. The other reason we were able to do this is because region_out_data column id is unique. We were also able to remove the rows that were not associated together.
+    • mapped_single_region_data (Old Size 34654824 :: New Size 28496458)
+This block takes about 1.799418 Seconds to run.
+
+SORT SINGLE REGION MAP BLOCK
+The seventh block is the Sort Single Region Map Block and by far took the most time to execute. This block sorts the mapped data by first the function name and then secondary the address. The reason this sort took the most time is because now we are sorting on a char array and not numbers like we were before. When we move to using threads this section is going to be the one we will try to optimize the most. This block took about 44.791313 Seconds to run.
+
+COUNT ADDRESS AND FUNCTIONS BLOCK
+The eighth block is the Count Address And Functions Block. This block groups the address, function keys together. Just like the Map Single To Region Block because this array is sorted we don't have to look for the rows because they are grouped so we just need to loop though the array once giving use a O(N). Are array size also reduces because we are grouping the rows.
+    • Groups (Old Size 28496458 :: New Size 548)
+This block took about 1.221893 Seconds to run.
+
+WRITE OUT TO FILE BLOCK
+The final ninth block just prints the groups array to a file and only takes about 0.000233 Seconds to run
+
+All together the script takes about 62.828585 Seconds to run. With about 71% of the execution time in the Sort Single Region Map Block I think this block will be the one most to focuses on with thread. The problem with this is because it is a qsort we cant use threads on it. Therefore we might have to combine the Sort Single Region Map Block and Count Address And Function Block to use the treads effectively.
