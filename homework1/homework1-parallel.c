@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <time.h>
+#include <pthread.h>
 
 #define SIZE 1024
 
@@ -29,6 +30,13 @@ typedef struct function_address {
   char function_name[128];
   int count;
 } function_address;
+
+typedef struct function_address_grouping_struct {
+  mapped_single_region* mapped_single_region_data;
+  int lower_bound;
+  int upper_bound;
+  int finished;
+} function_address_grouping_struct;
 
 void write_out(function_address* groups, int size) {
   FILE *f = fopen("address_function_grouping.out", "w");
@@ -90,10 +98,12 @@ int compare_map(const void* a, const void* b) {
   //printf("%s :: %s\n", map_a.function_name, map_b.function_name);
   int diff = strcmp(map_a.function_name, map_b.function_name);
   
+  /*
   if ( diff == 0 ) {
     //printf("%s :: %s\n", map_a.reference_address, map_b.reference_address);
     return strcmp(map_a.reference_address, map_b.reference_address);
   }
+  */
 
   return diff;
 }
@@ -161,7 +171,6 @@ int compare_single(const void* a, const void* b) {
 
   if(long_a == 0 || long_b == 0) {
     printf("%s,%ld :: %s,%ld\n", single_a.reference_address, single_a.associated_function_call_instance_id, single_b.reference_address, single_b.associated_function_call_instance_id);
-    sleep(100);
   }
   
   if ( long_a == long_b ) {return 0;}
@@ -250,9 +259,21 @@ single* load_data_single(FILE* single_file, char* type, int* size) {
 
 int main(int argc, char *argv[])
 {
+  clock_t start_time, time, result_time; 
+  double time_taken;
+
+  start_time = clock(); 
+  time = clock();
+
+  // BLOCK: Read File
   FILE* region_file = fopen("region.out", "r");
   FILE* read_single_file = fopen("read_single.out", "r");
   FILE* write_single_file = fopen("write_single.out", "r");
+  // BLOCK: Read File
+
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Read File %f Seconds\n", time_taken);
 
   if (read_single_file == NULL || write_single_file == NULL || region_file == NULL) {
     printf("One or more files could not be open\n");
@@ -264,6 +285,8 @@ int main(int argc, char *argv[])
 
   printf("file opened\n");
 
+  time = clock();
+  // BLOCK: Line Count File
   int* region_file_count = malloc(sizeof(int));
   line_count(region_file, region_file_count);
   printf("Region file count: %d\n", *region_file_count);
@@ -273,7 +296,13 @@ int main(int argc, char *argv[])
   int* write_file_count = malloc(sizeof(int));
   line_count(write_single_file, write_file_count);
   printf("Write file count: %d\n", *write_file_count);
+  // BLOCK: Line Count File
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Line Count File %f Seconds\n", time_taken);
 
+  time = clock();
+  // BLOCK: File Processing
   printf("Processing region.out file\n");
   printf("Old Size %d :: ", *region_file_count);
   region* region_out_data = load_data_region(region_file, region_file_count);
@@ -288,7 +317,13 @@ int main(int argc, char *argv[])
   printf("Old Size %d :: ", *write_file_count);
   single* write_out_data = load_data_single(write_single_file, "write", write_file_count);
   printf("New Size %d\n", *write_file_count);
+  // BLOCK: File Processing
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: File Processing %f Seconds\n", time_taken);
 
+  time = clock();
+  // BLOCK: Single Out Data Combination
   int* single_count = malloc(sizeof(int));
   *single_count = (*read_file_count + *write_file_count);
   single* single_data = malloc(*single_count * sizeof(*single_data));
@@ -296,6 +331,10 @@ int main(int argc, char *argv[])
   printf("Putting read and write together in one array size %d (%d + %d)\n", *single_count, *read_file_count, *write_file_count);
   memcpy(single_data,                    read_out_data, *read_file_count * sizeof(*single_data));
   memcpy(single_data + *read_file_count, write_out_data, *write_file_count * sizeof(*single_data));
+  // BLOCK: Single Out Data Combination
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Single Out Data Combination %f Seconds\n", time_taken);
 
   printf("Closing and Freeing Files and Variables\n");
   fclose(region_file);
@@ -306,74 +345,101 @@ int main(int argc, char *argv[])
   free(read_file_count);
   free(write_file_count);
 
+  time = clock();
+  // BLOCK: Sort Region And Single
   printf("Sorting region data\n");
   qsort(region_out_data, *region_file_count, sizeof(region), compare_region);
   printf("Sorting single data\n");
   qsort(single_data, *single_count, sizeof(single), compare_single);
+  // BLOCK: Sort Region And Single
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Sort Region And Single %f Seconds\n", time_taken);
 
+  time = clock();
+  // BLOCK: Map Single to Region
   int* map_single_count = malloc(sizeof(int));
   *map_single_count = *single_count;
 
-  printf("Mapping read_single and region data\n");
+  printf("Mapping single and region data\n");
   printf("Old Size %d :: ", *map_single_count);
   mapped_single_region* mapped_single_region_data = map_single(region_out_data, single_data, region_file_count, map_single_count);
   printf("New Size %d\n", *map_single_count);
+  // BLOCK: Map Single to Region
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Map Single to Region %f Seconds\n", time_taken);
 
+
+
+  int thread_count = 5;
+  pthread_t tid[5];
+  int batch_count = *map_single_count / thread_count;
+
+  int i = 0;
+  for(i = 0; i < thread_count; i++) {
+    function_address_grouping_struct* grouping_data = malloc(sizeof(*grouping_data));
+    grouping_data->mapped_single_region_data = mapped_single_region_data;
+    grouping_data->lower_bound = i*batch_count;
+    if(i == thread_count-1) {
+      grouping_data->upper_bound = *map_single_count-1;
+    }else{
+      grouping_data->upper_bound = ((i+1)*batch_count)-1;
+    }
+    grouping_data->finished = 0;
+    printf("Lower Bound %d - Upper Bound: %d :: %d\n", grouping_data->lower_bound, grouping_data->upper_bound, grouping_data->upper_bound-grouping_data->lower_bound);
+    //pthread_create(&tid[i],NULL,function_address_grouping,(void*)grouping_data);
+    free(grouping_data);
+  }
+
+
+
+
+
+
+  time = clock();
+  // BLOCK: Sort Single Region Map
   printf("Sorting mapped data\n");
-  qsort(mapped_single_region_data, *map_single_count, sizeof(mapped_single_region), compare_map);
+  //qsort(mapped_single_region_data, *map_single_count, sizeof(mapped_single_region), compare_map);
+  // BLOCK: Sort Single Region Map
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Sort Single Region Map %f Seconds\n", time_taken);
 
+  time = clock();
+  // BLOCK: Count Addresses And Functions
   int* function_address_grouping_count = malloc(sizeof(int));
   *function_address_grouping_count = *map_single_count;
 
   printf("Grouping Functions\n");
   printf("Old Size %d :: ", *function_address_grouping_count);
-  function_address* groups = function_address_grouping(mapped_single_region_data, function_address_grouping_count);
+  //function_address* groups = function_address_grouping(mapped_single_region_data, function_address_grouping_count);
   printf("New Size %d\n", *function_address_grouping_count);
+  // BLOCK: Count Addresses And Functions
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Count Addresses And Functions %f Seconds\n", time_taken);
 
-  write_out(groups, *function_address_grouping_count);
+  time = clock();
+  // BLOCK: Write out to file
+  //write_out(groups, *function_address_grouping_count);
+  // BLOCK: Write out to file
+  result_time = clock() - time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("TIME BLOCK: Write Out To File %f Seconds\n", time_taken);
 
   printf("Free data\n");
   free(region_out_data);
   free(single_data);
   free(mapped_single_region_data);
-  free(groups);
+  //free(groups);
   
   free(region_file_count);
   free(single_count);
   free(map_single_count);
   free(function_address_grouping_count);
+
+  result_time = clock() - start_time; 
+  time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 
+  printf("Total execution time: %f Seconds\n", time_taken);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
