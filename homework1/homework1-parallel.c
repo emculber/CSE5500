@@ -22,6 +22,7 @@ typedef struct mapped_single_region {
   char type[8];
   char reference_address[16];
   char function_name[128];
+  int count;
 } mapped_single_region;
 
 typedef struct function_address {
@@ -32,13 +33,14 @@ typedef struct function_address {
 } function_address;
 
 typedef struct function_address_grouping_struct {
+  int id;
   mapped_single_region* mapped_single_region_data;
-  int lower_bound;
-  int upper_bound;
+  int size;
   int finished;
+  mapped_single_region* return_function_address;
 } function_address_grouping_struct;
 
-void write_out(function_address* groups, int size) {
+void write_out(mapped_single_region* groups, int size) {
   FILE *f = fopen("address_function_grouping.out", "w");
   if (f == NULL)
   {
@@ -54,35 +56,41 @@ void write_out(function_address* groups, int size) {
   fclose(f);
 }
 
-function_address* function_address_grouping(mapped_single_region* mapped_single_region_data, int* size) {
-  function_address* function_address_data = malloc(*size * sizeof(*function_address_data));
+mapped_single_region* function_address_grouping(mapped_single_region* mapped_single_region_data, int* size) {
+  mapped_single_region* function_address_data = malloc(*size * sizeof(*function_address_data));
 
   int index = 0;
   int i = 0;
   char current_function_name[100];
   char current_reference_address[11];
+  char current_type[11];
   char check_function_name[100];
   char check_reference_address[11];
+  char check_type[11];
 
+  function_address_data[index].id = mapped_single_region_data[i].id;
   strcpy(function_address_data[index].type, mapped_single_region_data[i].type);
   strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
   strcpy(function_address_data[index].function_name, mapped_single_region_data[i].function_name);
-  function_address_data[index].count = 1;
+  function_address_data[index].count = mapped_single_region_data[i].count;
 
   for(i = 0; i < *size; i++) {
       strcpy(current_function_name, mapped_single_region_data[i].function_name);
       strcpy(current_reference_address, mapped_single_region_data[i].reference_address);
+      strcpy(current_type, mapped_single_region_data[i].type);
       strcpy(check_function_name, function_address_data[index].function_name);
       strcpy(check_reference_address, function_address_data[index].reference_address);
+      strcpy(check_type, function_address_data[index].type);
 
-    if(strcmp(current_function_name, check_function_name) == 0 && strcmp(current_reference_address, check_reference_address) == 0) {
+    if(strcmp(current_function_name, check_function_name) == 0 && strcmp(current_reference_address, check_reference_address) == 0 && strcmp(current_type, check_type) == 0) {
       function_address_data[index].count += 1;
     } else {
       index++;
+      function_address_data[index].id = mapped_single_region_data[i].id;
       strcpy(function_address_data[index].type, mapped_single_region_data[i].type);
       strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
       strcpy(function_address_data[index].function_name, mapped_single_region_data[i].function_name);
-      function_address_data[index].count = 1;
+      function_address_data[index].count = mapped_single_region_data[i].count;
     }
   }
 
@@ -98,14 +106,46 @@ int compare_map(const void* a, const void* b) {
   //printf("%s :: %s\n", map_a.function_name, map_b.function_name);
   int diff = strcmp(map_a.function_name, map_b.function_name);
   
-  /*
   if ( diff == 0 ) {
     //printf("%s :: %s\n", map_a.reference_address, map_b.reference_address);
-    return strcmp(map_a.reference_address, map_b.reference_address);
+    int diff2 = strcmp(map_a.reference_address, map_b.reference_address);
+    if ( diff2 == 0 ) {
+      //printf("%s :: %s\n", map_a.type, map_b.type);
+      return strcmp(map_a.type, map_b.type);
+    }
+    return diff2;
   }
-  */
 
   return diff;
+}
+
+void* mapped_grouping(void* function_address_grouping_arg) {
+  function_address_grouping_struct* data = (function_address_grouping_struct*) function_address_grouping_arg;
+  //printf("%d : =================================\n", data->id);
+  int* map_single_count = malloc(sizeof(int));
+  *map_single_count = data->size;
+  // BLOCK: Sort Single Region Map
+  //printf("Sorting mapped data : %d\n", *map_single_count);
+  qsort(data->mapped_single_region_data, *map_single_count, sizeof(mapped_single_region), compare_map);
+  //printf("Map sorted\n");
+  // BLOCK: Sort Single Region Map
+
+  // BLOCK: Count Addresses And Functions
+  int* function_address_grouping_count = malloc(sizeof(int));
+  *function_address_grouping_count = *map_single_count;
+
+  //printf("Grouping Functions\n");
+  printf("Old Size %d :: ", *function_address_grouping_count);
+  data->return_function_address = function_address_grouping(data->mapped_single_region_data, function_address_grouping_count);
+  printf("New Size %d\n", *function_address_grouping_count);
+  if(*function_address_grouping_count == data->size) {
+    data->finished = 1;
+  }
+  data->size = *function_address_grouping_count;
+  free(map_single_count);
+  free(function_address_grouping_count);
+  //printf("%d : =================================\n", data->id);
+  pthread_exit(0);
 }
 
 mapped_single_region* map_single(region* sorted_region, single* sorted_single, int* region_size, int* single_size) {
@@ -372,24 +412,62 @@ int main(int argc, char *argv[])
 
 
 
-  int thread_count = 5;
+  int thread_count = 1;
   pthread_t tid[5];
   int batch_count = *map_single_count / thread_count;
 
   int i = 0;
-  for(i = 0; i < thread_count; i++) {
-    function_address_grouping_struct* grouping_data = malloc(sizeof(*grouping_data));
-    grouping_data->mapped_single_region_data = mapped_single_region_data;
-    grouping_data->lower_bound = i*batch_count;
-    if(i == thread_count-1) {
-      grouping_data->upper_bound = *map_single_count-1;
-    }else{
-      grouping_data->upper_bound = ((i+1)*batch_count)-1;
+  int running = 1;
+  while(running) {
+    batch_count = *map_single_count / thread_count;
+    function_address_grouping_struct* grouping_data = malloc(thread_count * sizeof(*grouping_data));
+    for(i = 0; i < thread_count; i++) {
+
+      int lower_bound = i*batch_count;
+      int upper_bound = 0;
+      if(i == thread_count-1) {
+        upper_bound = *map_single_count-1;
+      }else{
+        upper_bound = ((i+1)*batch_count)-1;
+      }
+      grouping_data[i].size = upper_bound - lower_bound;
+
+      grouping_data[i].mapped_single_region_data = malloc(grouping_data[i].size * sizeof(*grouping_data[i].mapped_single_region_data));
+      int x = 0;
+      for(x = lower_bound; x < upper_bound; x++) {
+        grouping_data[i].mapped_single_region_data[x-lower_bound] = mapped_single_region_data[x];
+      }
+
+      grouping_data[i].finished = 0;
+      grouping_data[i].id = i;
+      printf("Lower Bound %d - Upper Bound: %d :: %d\n", lower_bound, upper_bound, grouping_data[i].size);
+      //mapped_grouping((void*)&grouping_data[i]);
+      pthread_create(&tid[i],NULL,mapped_grouping,(void*)&grouping_data[i]);
     }
-    grouping_data->finished = 0;
-    printf("Lower Bound %d - Upper Bound: %d :: %d\n", grouping_data->lower_bound, grouping_data->upper_bound, grouping_data->upper_bound-grouping_data->lower_bound);
-    //pthread_create(&tid[i],NULL,function_address_grouping,(void*)grouping_data);
+    for(i = 0; i < thread_count; i++) {
+      printf("Pthread join %d\n", i);
+      pthread_join(tid[i], NULL);
+    }
+    int index = 0;
+    running = 0;
+    for(i = 0; i < thread_count; i++) {
+      int x = 0;
+      printf("%d SIZE: %d\n", i, grouping_data[i].size);
+      for(x = 0; x < grouping_data[i].size; x++) {
+        mapped_single_region_data[index] = grouping_data[i].return_function_address[x];
+        index++;
+      }
+      if(!grouping_data[i].finished && thread_count != 1) {
+        running = 1;
+      }
+    }
+
+    printf("Old Size %d :: ", *map_single_count);
+    *map_single_count = index;
+    mapped_single_region_data = realloc(mapped_single_region_data, index * sizeof(*mapped_single_region_data));
+    printf("New Size %d\n", *map_single_count);
     free(grouping_data);
+    thread_count--;
   }
 
 
@@ -422,7 +500,7 @@ int main(int argc, char *argv[])
 
   time = clock();
   // BLOCK: Write out to file
-  //write_out(groups, *function_address_grouping_count);
+  write_out(mapped_single_region_data, *map_single_count);
   // BLOCK: Write out to file
   result_time = clock() - time; 
   time_taken = ((double)result_time)/CLOCKS_PER_SEC; // in seconds 

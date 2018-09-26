@@ -54,10 +54,13 @@ function_address* function_address_grouping(mapped_single_region* mapped_single_
   int i = 0;
   char current_function_name[100];
   char current_reference_address[11];
+  char current_type[11];
   char check_function_name[100];
   char check_reference_address[11];
+  char check_type[11];
 
   strcpy(function_address_data[index].type, mapped_single_region_data[i].type);
+  strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
   strcpy(function_address_data[index].reference_address, mapped_single_region_data[i].reference_address);
   strcpy(function_address_data[index].function_name, mapped_single_region_data[i].function_name);
   function_address_data[index].count = 1;
@@ -65,10 +68,12 @@ function_address* function_address_grouping(mapped_single_region* mapped_single_
   for(i = 0; i < *size; i++) {
       strcpy(current_function_name, mapped_single_region_data[i].function_name);
       strcpy(current_reference_address, mapped_single_region_data[i].reference_address);
+      strcpy(current_type, mapped_single_region_data[i].type);
       strcpy(check_function_name, function_address_data[index].function_name);
       strcpy(check_reference_address, function_address_data[index].reference_address);
+      strcpy(check_type, function_address_data[index].type);
 
-    if(strcmp(current_function_name, check_function_name) == 0 && strcmp(current_reference_address, check_reference_address) == 0) {
+    if(strcmp(current_function_name, check_function_name) == 0 && strcmp(current_reference_address, check_reference_address) == 0 && strcmp(current_type, check_type) == 0) {
       function_address_data[index].count += 1;
     } else {
       index++;
@@ -93,7 +98,11 @@ int compare_map(const void* a, const void* b) {
   
   if ( diff == 0 ) {
     //printf("%s :: %s\n", map_a.reference_address, map_b.reference_address);
-    return strcmp(map_a.reference_address, map_b.reference_address);
+    int diff2 = strcmp(map_a.reference_address, map_b.reference_address);
+    if( diff2 == 0) {
+      return strcmp(map_a.reference_address, map_b.reference_address);
+    }
+    return diff2;
   }
 
   return diff;
